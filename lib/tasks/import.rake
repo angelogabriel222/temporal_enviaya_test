@@ -2,7 +2,8 @@ namespace :import do
   desc "TODO"
   task zip_codes: :environment do
     puts '******************************** INIT IMPORT ZIP CODE ********************************'
-    puts 'The import can take more than 15 minutes'
+    puts 'The import can take more than 22 minutes'
+    puts 'In case of an upgrade it may take 5 minutes'
     
     init_time = Time.now
     @country = Country.where(code: 'MX').first || Country.create(code: 'MX')
@@ -26,7 +27,7 @@ namespace :import do
     @all_data = PostalCode.count.zero? && Neighborhood.count.zero? && Municipality.count.zero? && City.count.zero?
     @codes = []
 
-    xlsx = Roo::Excelx.new('./lib/tasks/files/postal_codes_Mexico - Copy.xlsx')
+    xlsx = Roo::Excelx.new('./lib/tasks/files/postal_codes_Mexico.xlsx')
     # Iterating sheets except the first (Nota)
     xlsx.sheets.drop(1).each do |sheet|
       puts "Creating State -------------------------------- #{sheet}"
