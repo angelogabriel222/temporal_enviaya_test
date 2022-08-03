@@ -28,7 +28,7 @@ namespace :import do
     @all_data = PostalCode.count.zero? && Neighborhood.count.zero? && Municipality.count.zero? && City.count.zero?
     @codes = []
 
-    xlsx = Roo::Excelx.new('./lib/tasks/files/postal_codes_Mexico_mitad.xlsx')
+    xlsx = Roo::Excelx.new('./lib/tasks/files/postal_codes_Mexico.xlsx')
     # Iterating sheets except the first (Nota)
     xlsx.sheets.drop(1).each do |sheet|
       puts "Creating State -------------------------------- #{sheet}"
