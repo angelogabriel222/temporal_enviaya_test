@@ -21,7 +21,9 @@ namespace :import do
       cities: 0,
       municipalities: 0,
       postal_codes: 0,
-      neighborhood: 0
+      neighborhood: 0,
+      postal_codes_updated: 0,
+      neighborhood_updated: 0
     }
 
     @all_data = PostalCode.count.zero? && Neighborhood.count.zero? && Municipality.count.zero? && City.count.zero?
@@ -41,7 +43,6 @@ namespace :import do
       xlsx.sheet(sheet).each_with_index do |row, index|
         next unless !is_header(row)
         @codes << row[0] unless @all_data
-        next unless record_not_found(row)
 
         # Block exception when column d_ciudad (row[5]) is empty
         unless !row[5].blank?
@@ -79,22 +80,30 @@ namespace :import do
 
         postal_code = PostalCode.where(code: row[0], country_id: @country.id).first
         unless postal_code
-          postal_code = PostalCode.new(code: row[0], country_id: @country.id, state_id: state.id, municipality_id: municipality.id)
-          unless postal_code.valid? && postal_code.save
-            @postal_code_errs << { state: postal_code, error: postal_code.errors.full_messages, postal_code: row[0] } 
-            next 
-          end
+          postal_code = create_postal_code(row, state, municipality)
+          next unless postal_code
           @hash_counters[:postal_codes] += 1
-        end
-        
-        neighborhood = Neighborhood.where(name: row[2], country_id: @country.id, postal_code_id: postal_code.id).first
-        unless neighborhood
-          neighborhood = Neighborhood.new(name: row[2], country_id: @country.id, state_id: state.id, municipality_id: municipality.id, postal_code_id: postal_code.id, city_id: city.id)
-          unless neighborhood.valid? && neighborhood.save
-            @neighborhood_errs << { state: neighborhood, error: neighborhood.errors.full_messages, postal_code: row[0] } 
-            next
+        else
+          unless postal_code.code == row[0] && postal_code.municipality.name == row[3]
+            postal_code.delete
+            postal_code = create_postal_code(row, state, municipality)
+            next unless postal_code
+            @hash_counters[:postal_codes_updated] += 1
           end
+        end
+
+        neighborhood = Neighborhood.where(name: row[1], country_id: @country.id, city_id: city.id, municipality_id: municipality.id).first
+        unless neighborhood
+          neighborhood = create_neighborhood(row, state, municipality, postal_code, city)
+          next unless neighborhood
           @hash_counters[:neighborhood] += 1
+        else
+          unless neighborhood.name == row[1] && neighborhood.postal_code.code == row[0] && neighborhood.municipality.name == row[3]
+            neighborhood.delete
+            neighborhood = create_neighborhood(row, state, municipality, postal_code, city)
+            next unless neighborhood
+            @hash_counters[:neighborhood_updated] += 1
+          end
         end
 
         city_postal = CitiesPostalCode.where(city_id: city.id, postal_code_id: postal_code.id).first
@@ -119,6 +128,8 @@ namespace :import do
     puts "Municipalities created --------------------------------- #{@hash_counters[:municipalities]}"
     puts "Postal codes created ----------------------------------- #{@hash_counters[:postal_codes]}"
     puts "Neighborhoods created ---------------------------------- #{@hash_counters[:neighborhood]}"
+    puts "Postal codes updated ---------------------------------- #{@hash_counters[:postal_codes_updated]}"
+    puts "Neighborhoods updated ---------------------------------- #{@hash_counters[:neighborhood_updated]}"
     puts '-----------------------------------------------------------'
 
     unless @city_errs.length.zero?
@@ -151,15 +162,6 @@ namespace :import do
     row.find { |r| r == 'd_codigo' } && row.find { |r| r == 'd_asenta' } && row.find { |r| r == 'd_tipo_asenta' } && row.find { |r| r == 'D_mnpio' } && row.find { |r| r == 'd_estado' } && row.find { |r| r == 'd_ciudad' } && row.find { |r| r == 'd_CP' } && row.find { |r| r == 'c_estado' } && row.find { |r| r == 'c_oficina' }
   end
 
-  def record_not_found(row)
-    sql = 'SELECT COUNT(pc.id) FROM postal_codes as pc '
-    sql += 'LEFT OUTER join countries as co on co.id = pc.country_id '
-    sql += 'LEFT OUTER join municipalities as mu on mu.id = pc.municipality_id '
-    sql += "where pc.code = '#{row[0]}' AND mu.name = '#{row[3]}'"
-    results = ActiveRecord::Base.connection.execute(sql)
-    results.to_a.first['count'].zero?
-  end
-
   def del_excess(codes_file)
     codes_bd = PostalCode.pluck(:code)
     excess = codes_bd.select{ |e| !codes_file.include?(e) }
@@ -167,6 +169,26 @@ namespace :import do
     if excess.length.positive?
       PostalCode.where(code: excess).delete_all
       puts "The #{excess.join(', ')} codes have been removed from the database since they were deleted from Excel"
+    end
+  end
+
+  def create_postal_code(row, state, municipality)
+    postal_code = PostalCode.new(code: row[0], country_id: @country.id, state_id: state.id, municipality_id: municipality.id)
+    unless postal_code.valid? && postal_code.save
+      @postal_code_errs << { state: postal_code, error: postal_code.errors.full_messages, postal_code: row[0] } 
+      false
+    else
+      postal_code
+    end
+  end
+
+  def create_neighborhood(row, state, municipality, postal_code, city)
+    neighborhood = Neighborhood.new(name: row[1], country_id: @country.id, state_id: state.id, municipality_id: municipality.id, postal_code_id: postal_code.id, city_id: city.id)
+    unless neighborhood.valid? && neighborhood.save
+      @neighborhood_errs << { state: neighborhood, error: neighborhood.errors.full_messages, postal_code: row[0] } 
+      false
+    else
+      neighborhood
     end
   end
 end
