@@ -22,14 +22,13 @@ namespace :import do
       municipalities: 0,
       postal_codes: 0,
       neighborhood: 0,
-      postal_codes_updated: 0,
-      neighborhood_updated: 0
+      postal_codes_updated: 0
     }
 
     @all_data = PostalCode.count.zero? && Neighborhood.count.zero? && Municipality.count.zero? && City.count.zero?
     @codes = []
 
-    xlsx = Roo::Excelx.new('./lib/tasks/files/postal_codes_Mexico.xlsx')
+    xlsx = Roo::Excelx.new('./lib/tasks/files/postal_codes_Mexico_mitad.xlsx')
     # Iterating sheets except the first (Nota)
     xlsx.sheets.drop(1).each do |sheet|
       puts "Creating State -------------------------------- #{sheet}"
@@ -92,18 +91,14 @@ namespace :import do
           end
         end
 
-        neighborhood = Neighborhood.where(name: row[1], country_id: @country.id, city_id: city.id, municipality_id: municipality.id).first
+        neighborhood = Neighborhood.where(name: row[2], country_id: @country.id, postal_code_id: postal_code.id).first
         unless neighborhood
-          neighborhood = create_neighborhood(row, state, municipality, postal_code, city)
-          next unless neighborhood
-          @hash_counters[:neighborhood] += 1
-        else
-          unless neighborhood.name == row[1] && neighborhood.postal_code.code == row[0] && neighborhood.municipality.name == row[3]
-            neighborhood.delete
-            neighborhood = create_neighborhood(row, state, municipality, postal_code, city)
-            next unless neighborhood
-            @hash_counters[:neighborhood_updated] += 1
+          neighborhood = Neighborhood.new(name: row[2], country_id: @country.id, state_id: state.id, municipality_id: municipality.id, postal_code_id: postal_code.id, city_id: city.id)
+          unless neighborhood.valid? && neighborhood.save
+            @neighborhood_errs << { state: neighborhood, error: neighborhood.errors.full_messages, postal_code: row[0] } 
+            next
           end
+          @hash_counters[:neighborhood] += 1
         end
 
         city_postal = CitiesPostalCode.where(city_id: city.id, postal_code_id: postal_code.id).first
@@ -129,7 +124,6 @@ namespace :import do
     puts "Postal codes created ----------------------------------- #{@hash_counters[:postal_codes]}"
     puts "Neighborhoods created ---------------------------------- #{@hash_counters[:neighborhood]}"
     puts "Postal codes updated ---------------------------------- #{@hash_counters[:postal_codes_updated]}"
-    puts "Neighborhoods updated ---------------------------------- #{@hash_counters[:neighborhood_updated]}"
     puts '-----------------------------------------------------------'
 
     unless @city_errs.length.zero?
@@ -179,16 +173,6 @@ namespace :import do
       false
     else
       postal_code
-    end
-  end
-
-  def create_neighborhood(row, state, municipality, postal_code, city)
-    neighborhood = Neighborhood.new(name: row[1], country_id: @country.id, state_id: state.id, municipality_id: municipality.id, postal_code_id: postal_code.id, city_id: city.id)
-    unless neighborhood.valid? && neighborhood.save
-      @neighborhood_errs << { state: neighborhood, error: neighborhood.errors.full_messages, postal_code: row[0] } 
-      false
-    else
-      neighborhood
     end
   end
 end
