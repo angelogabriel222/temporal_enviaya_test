@@ -35,7 +35,6 @@
 /config/master.key
 /config/database.yml
 /.idea/
-/lib/tasks/files
 /city_errs.json
 /municipality_errs.json
 /postal_code_errs.json
